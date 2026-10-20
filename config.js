@@ -5,7 +5,7 @@
 // zokeiToken: 造型日報の合言葉（造型日報の Code.gs の TOKEN）
 // workers   : 作業者のプルダウンに最初から出す名前
 window.SUNA_CONFIG = {
-  syncUrl: "",
+  syncUrl: "https://script.google.com/macros/s/AKfycbxoakYZQfxbFn5skX5hup3QchflJKbukwDpwL9WBhP2JnGEcJ898InrkJy3Uq8WVDKmrg/exec",
   token: "Dc7p02Bfa4s3yeH1",
   zokeiUrl: "",
   zokeiToken: "3eAv6FdoiaIlRAW6",
