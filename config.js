@@ -9,5 +9,7 @@ window.SUNA_CONFIG = {
   token: "Dc7p02Bfa4s3yeH1",
   zokeiUrl: "https://script.google.com/macros/s/AKfycbwp-kFrZ8nxZ2EnCa7benxNNPrammKxK3lGQ6g6vYmsJZcwtODXVrOG6ojquwcObB3ndA/exec",
   zokeiToken: "3eAv6FdoiaIlRAW6",
+  yokaiUrl: "https://script.google.com/macros/s/AKfycbwY_XoO4pl8zVCDETy-DlQlGxAyQbxOH18sIIZoSQxRMD5Zbrjy7Tx5gy4ZjFKCfGML2w/exec",
+  yokaiToken: "OWHKxlWeao3gjTQS",
   workers: ["神林","ジャヤ","バワ","デワ","ロシ","スブラタ"]
 };
