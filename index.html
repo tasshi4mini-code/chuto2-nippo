@@ -453,7 +453,11 @@ function ensureAll(s){ s=s||state; let ch=false;
   return ch; }
 // 温度規格 "1370~1400" → {min,max}
 function parseSpec(t){ const m=/(\d{3,4}(?:\.\d+)?)\s*[~〜～\-－]\s*(\d{3,4}(?:\.\d+)?)/.exec(String(t||"")); return m?{min:+m[1],max:+m[2]}:null; }
-function autoJ(v,sp){ const n=num(v); if(n==null||!sp) return ""; return (n<sp.min||n>sp.max)?"×":"○"; }
+// 規格の幅による公差：幅が TOL_W℃ 以下なら ±TOL℃ を認める（例 10℃・15℃幅 → ±3℃ 適用、20℃・30℃幅 → 適用しない）
+const TOL_W=(window.SUNA_CONFIG&&+window.SUNA_CONFIG.tolWidth)||15, TOL=(window.SUNA_CONFIG&&+window.SUNA_CONFIG.tol)||3;
+function tolOf(sp){ return sp&&(sp.max-sp.min)<=TOL_W?TOL:0; }
+function specLabel(sp){ if(!sp) return ""; const t=tolOf(sp); return `${sp.min}〜${sp.max}℃`+(t?`（±${t} → ${sp.min-t}〜${sp.max+t}℃）`:"（公差なし）"); }
+function autoJ(v,sp){ const n=num(v); if(n==null||!sp) return ""; const t=tolOf(sp); return (n<sp.min-t||n>sp.max+t)?"×":"○"; }
 function mins(hm){ const m=/^(\d{1,2}):(\d{2})/.exec(hm||""); return m?(+m[1])*60+(+m[2]):null; }
 function dayIdx(d){ const [y,m,dd]=d.split("-").map(Number); return Date.UTC(y,m-1,dd)/864e5; }
 function pourAbs(r){ const t=mins(r.time); if(t==null) return null; return dayIdx(state.date)*1440+t+(t<DAY_START*60?1440:0); }
@@ -484,7 +488,7 @@ function wSel(r){ const names=workerNames(); if(r.worker&&!names.includes(r.work
   return `<select data-k="worker" class="wsel" ${VIEW?"disabled":""}><option value="">－</option>${names.map(n=>`<option ${n===r.worker?"selected":""}>${esc(n)}</option>`).join("")}<option value="__add">＋ 追加</option></select>`; }
 function tcls(r,f){ const v=r[f]; return v==="×"?"ng":v==="○"?"ok":""; }
 function prodChip(r){ if(!r.hin&&!rowHas(r)) return ""; const sp=parseSpec(r.spec);
-  return `<button class="prod ${r.pm?"man":""} ${r.hin?"":"none"}" data-prod="1">${r.hin?`<b>${esc(r.hin)}</b> ${sp?`${sp.min}〜${sp.max}℃`:"規格なし"}${r.pm?" (手で選択)":""}`:"製品：造型日報から見つかりません（タップで選ぶ）"}</button>`; }
+  return `<button class="prod ${r.pm?"man":""} ${r.hin?"":"none"}" data-prod="1">${r.hin?`<b>${esc(r.hin)}</b> ${sp?specLabel(sp):"規格なし"}${r.pm?" (手で選択)":""}`:"製品：造型日報から見つかりません（タップで選ぶ）"}</button>`; }
 function renderRows(){
   const b=state.blocks[sel];
   $("chargeTitle").textContent="チャージ "+(sel+1);
@@ -575,7 +579,7 @@ $("rows").addEventListener("click",e=>{
   const row=e.target.closest(".mrow"); if(!row||VIEW) return; const i=+row.dataset.row, b=state.blocks[sel], r=b.rows[i];
   if(e.target.closest("[data-now]")){ r.time=nowHM(); rowStart(sel,i); touchBlock(sel); renderRows(); refreshLight(); return; }
   const pin=e.target.closest("[data-pad]"); if(pin){ const k=pin.dataset.k, sp=parseSpec(r.spec);
-    openPad(`チャージ${sel+1} No.${i+1}　${PADL[k]}`, k==="ret"?"":(sp?`規格 ${sp.min}〜${sp.max}℃（${r.hin}）`:"規格なし（判定は手で）"), r[k], k!=="ret", v=>{ r[k]=v; if(v!=="") rowStart(sel,i); touchBlock(sel); renderRows(); refreshLight(); }); return; }
+    openPad(`チャージ${sel+1} No.${i+1}　${PADL[k]}`, k==="ret"?"":(sp?`規格 ${specLabel(sp)}　${r.hin}`:"規格なし（判定は手で）"), r[k], k!=="ret", v=>{ r[k]=v; if(v!=="") rowStart(sel,i); touchBlock(sel); renderRows(); refreshLight(); if(v!==""&&k!=="ret") Link.load(true,true); }); return; }
   if(e.target.closest("[data-prod]")){ openProd(i); return; }
   const jb=e.target.closest("[data-j]"); if(jb){ const f=jb.dataset.j, mf={judge:"jm",rejudge:"rjm",rrjudge:"rrjm"}[f], sp=parseSpec(r.spec);
     if(sp){ // 自動 → 手で○ → 手で× → 自動
@@ -747,7 +751,7 @@ function workbook(sheets){
 
 // ---- Excel ----
 const DATA_HEAD=["生産日","号機","チャージNo","材質","マンガン(kg)","硫化鉄(kg)","TP採取","No","時間","品番","温度規格(℃)","受湯(℃)","判定","再測定(℃)","再判定","再々測定(℃)","再々判定","最終判定","リターン回数","作業者","記録確認"];
-function specTxt(r){ const sp=parseSpec(r.spec); return sp?`${sp.min}~${sp.max}`:""; }
+function specTxt(r){ const sp=parseSpec(r.spec); if(!sp) return ""; const t=tolOf(sp); return `${sp.min}~${sp.max}`+(t?`(±${t})`:""); }
 function dataRows(){ const out=[DATA_HEAD];
   state.blocks.forEach((b,c)=>b.rows.forEach((r,i)=>{ if(!rowHas(r)) return;
     out.push([state.date,state.equip,c+1,b.mat,b.mangan,b.ryuka,b.tp?"○":"",i+1,r.time,r.hin,specTxt(r),r.temp,r.judge,r.retemp,r.rejudge,r.rrtemp,r.rrjudge,finalJ(r),r.ret,r.worker,state.recordCheck]); }));
@@ -831,9 +835,11 @@ const Link=(function(){
   function prevDate(d){ const x=new Date(d+"T00:00:00"); x.setDate(x.getDate()-1); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); }
   // 造型日報は朝8時で日付が切りかわる
   const Z_START=8;
-  async function load(force){
+  let again=false;
+  async function load(force,now){
     if(!on()||!state||navigator.onLine===false) return;
-    const k=state.date+"|"+state.equip; if(busy) return; if(!force&&k===key&&Date.now()-at<3*60*1000) return;
+    const k=state.date+"|"+state.equip; if(busy){ if(now) again=true; return; }
+    if(now){ const L=$("linkLine"); if(L){ L.className="linkline"; L.innerHTML="造型日報を確認して判定中…"; } } if(!force&&k===key&&Date.now()-at<3*60*1000) return;
     busy=true;
     try{ const d=state.date, list=[];
       for(const zd of [prevDate(d),d]){ const items=await get(zd,state.equip);
@@ -841,9 +847,9 @@ const Link=(function(){
           list.push({hin:it0.hin,name:it0.name||"",mat:it0.mat||"",temp:x.temp||"",st:x.st,abs:dayIdx(zd)*1440+t+(t<Z_START*60?1440:0)}); }); }
       list.sort((a,b)=>a.abs-b.abs); prods=list; at=Date.now(); key=k; err="";
       if(state.date+"|"+state.equip===k){ let ch=false; state.blocks.forEach((b,ci)=>{ const before=JSON.stringify(b.rows); b.rows.forEach(r=>{ if(rowHas(r)) applyAuto(b,r); }); if(JSON.stringify(b.rows)!==before&&!VIEW){ b.u=Date.now(); Sync.queue("block",ci); ch=true; } });
-        if(ch){ save(); const act=document.activeElement; if(!(act&&act.closest&&act.closest("#entryCard"))) renderRows(); refreshLight(); } }
+        if(ch){ save(); const act=document.activeElement; if((now&&!$("dlgPad").open)||!(act&&act.closest&&act.closest("#entryCard"))) renderRows(); refreshLight(); } }
     }catch(e){ err=String(e.message||e); }
-    busy=false; renderLink(); }
+    busy=false; renderLink(); if(again){ again=false; load(true); } }
   function productAt(abs){ if(abs==null) return null; let best=null; prods.forEach(p=>{ if(p.abs<=abs&&abs-p.abs<12*60) best=p; }); return best; }
   function list(){ const d0=dayIdx(state.date)*1440+DAY_START*60; return prods.filter(p=>p.abs>=d0-60&&p.abs<d0+24*60); }
   function status(){
@@ -851,7 +857,7 @@ const Link=(function(){
     if(err) return {cls:"err",html:`⚠ 造型日報を読み込めませんでした（${esc(err)}）。前に読んだ製品で判定します。`};
     if(!at) return {cls:"",html:"造型日報を読み込み中…"};
     const L=list(), t=new Date(at);
-    return {cls:"ok",html:`造型日報（${esc(state.equip)}）と連動中：今日の製品 ${L.length}件 <span class="small">（${t.getHours()}:${String(t.getMinutes()).padStart(2,"0")} 読込）</span> — 受湯温度を入れると、その時間に造型していた製品の注湯温度規格で ○× を自動で付けます`}; }
+    return {cls:"ok",html:`造型日報（${esc(state.equip)}）と連動中：今日の製品 ${L.length}件 <span class="small">（${t.getHours()}:${String(t.getMinutes()).padStart(2,"0")} 読込）</span> — 受湯温度を入れるたびに造型日報を読み直し、その時間の製品の注湯温度規格で ○× を自動で付けます（規格の幅が${TOL_W}℃以下なら ±${TOL}℃ まで○）`}; }
   return {load,productAt,list,status,cfg,setCfg,on};
 })();
 

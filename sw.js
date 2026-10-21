@@ -1,6 +1,6 @@
 // 注湯日報 Service Worker
 // アプリを更新したら VERSION を変えてください(自動で新しい版に切り替わります)
-const VERSION = "chuto2-nippo-v4";
+const VERSION = "chuto2-nippo-v5";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./config.js", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
