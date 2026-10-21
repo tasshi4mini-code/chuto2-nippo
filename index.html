@@ -147,7 +147,7 @@ button.ghost{border-color:#b07a70}
 .jbtn.x{background:var(--ng);color:var(--ng-ink);border-color:#f19999}
 .jbtn .m{display:block;font-size:10px;font-weight:normal;color:var(--sub);line-height:1}
 .ml{display:none;font-size:11px;color:var(--sub)}
-.srow{display:grid;grid-template-columns:34px 1.4fr 1.4fr 1fr;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
+.srow{display:grid;grid-template-columns:34px minmax(0,1.4fr) minmax(0,1fr);gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
 .mat{display:flex;gap:6px;flex-wrap:wrap}
 .mat label{display:flex;align-items:center;gap:6px;border:1px solid #b9c2cf;border-radius:8px;padding:0 10px;min-height:44px;cursor:pointer;background:#fff;font-weight:bold}
 .mat input{width:22px;height:22px;min-height:0}
@@ -229,6 +229,17 @@ body.view #btnClearCharge,body.view #btnAddEv,body.view [data-now],body.view [da
   .mwarn{font-size:15px}
   .mchip{font-size:15px;padding:1px 8px}
 }
+/* 黄色の切りかえボタンと溶解の材質の帯：下にスクロールしても上に残る */
+.sticktop{position:sticky;top:var(--meltTop,0px);z-index:19;background:#5c1f16;display:flex;gap:10px;align-items:center;padding:8px 16px;box-shadow:0 3px 8px rgba(0,0,0,.25)}
+.sticktop .meltbar{flex:1 1 0;min-width:0}
+.sticktop .swbtn{flex:0 0 auto}
+@media (max-width:700px){ .sticktop{flex-wrap:wrap;padding:6px 8px;gap:6px} .sticktop .meltbar{flex:1 1 100%} .sticktop .swbtn{font-size:16px;min-height:40px;width:100%;flex-direction:row;gap:8px} .sticktop.stuck .mi small{display:none} }
+@media print{ .sticktop{display:none!important} }
+label.sup{color:#c62828;font-weight:bold}
+label.sup input{border:2px solid #e53935;background:#fff1f1;color:#b00020;font-weight:bold}
+label.sup input::placeholder{color:#e57373;font-weight:normal}
+.srow input.padin:disabled{background:#eef0f3;color:#8a93a3;border-style:dashed}
+.meltbar[hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -240,19 +251,21 @@ body.view #btnClearCharge,body.view #btnAddEv,body.view [data-now],body.view [da
     <select id="equip" style="width:auto;min-height:40px;font-size:16px"><option>1号機</option><option>2号機</option></select></label>
   <button class="sync" id="syncStat" hidden>同期</button>
   <span class="sp"></span>
-  <a class="swbtn" id="btnSwitch" data-to="../zokei-nippo/" href="../zokei-nippo/">◀ 造型日報へ<small id="swEq"></small></a>
   <button class="ghost" id="btnInstall" hidden>ホーム画面に追加</button>
   <button class="ghost" id="btnList">日報一覧</button>
   <button class="ghost" id="btnSettings">設定</button>
   <button class="pri" id="btnCsv">Excel保存</button>
-  <div class="meltbar" id="meltBar" hidden></div>
 </header>
+<div class="sticktop" id="stickTop">
+  <a class="swbtn" id="btnSwitch" data-to="../zokei-nippo/" href="../zokei-nippo/">◀ 造型日報へ<small id="swEq"></small></a>
+  <div class="meltbar" id="meltBar" hidden></div>
+</div>
 
 <main>
   <section class="card">
     <h2>日報ヘッダー <span class="id">Header laporan</span></h2>
     <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px">
-      <label class="f">記録確認（監督者） <span class="id">Konfirmasi</span><input id="recordCheck" placeholder="確認者名"></label>
+      <label class="f sup">記録確認（監督者記入）<span class="id">Konfirmasi (pengawas)</span><input id="recordCheck" placeholder="監督者記入"></label>
       <div class="notice"><b>成分TP採取タイミング</b> <span class="id">Waktu pengumpulan TP komponen</span><br>
         <strong>チャージ（1.5t）毎に1回目の溶湯で採取すること</strong><br>
         <span class="id">Kumpulkan dengan logam cair pertama untuk setiap muatan (1,5t)</span></div>
@@ -306,7 +319,7 @@ body.view #btnClearCharge,body.view #btnAddEv,body.view [data-now],body.view [da
   </section>
 
   <section class="card">
-    <h2>採取時間・材質・チル深さ <span class="id">Waktu / Bahan / kedalaman</span></h2>
+    <h2>採取時間・チル深さ <span class="id">Waktu / kedalaman chill</span></h2>
     <div id="sampling"></div>
   </section>
 
@@ -524,8 +537,7 @@ function renderSampling(){
     <div class="srow" data-s="${i}">
       <div class="no"><b>${i+1}</b></div>
       <div class="tcell"><input type="time" data-sk="time" value="${esc(s.time)}" ${VIEW?"readonly":""}><button data-snow="1">今</button></div>
-      <div class="smat"><button data-sm="fc250" class="${s.fc250?"on m-FC250":""}">FC250</button><button data-sm="fc200" class="${s.fc200?"on m-FC200":""}">FC200</button></div>
-      <label class="f">チル深さ (mm)<input data-sk="chill" data-pad="1" readonly inputmode="none" value="${esc(s.chill)}" class="padin" placeholder="－"></label>
+      <label class="f">チル深さ (mm) <span class="id">kedalaman chill</span><input data-sk="chill" data-pad="1" readonly inputmode="none" value="${esc(s.chill)}" class="padin" placeholder="－"></label>
     </div>`).join(""); }
 function renderEvents(){
   if(!liveEvents().length){ $("events").innerHTML='<div class="small" style="margin-bottom:10px">記録なし</div>'; return; }
@@ -609,8 +621,8 @@ $("btnNextC").onclick=()=>{ selectCharge(sel+1); window.scrollTo({top:$("entryCa
 $("btnPrevC").onclick=()=>selectCharge(sel-1);
 $("sampling").addEventListener("click",e=>{ const row=e.target.closest(".srow"); if(!row||VIEW) return; const s=state.sampling.rows[+row.dataset.s];
   if(e.target.closest("[data-snow]")){ s.time=nowHM(); touchSampling(); renderSampling(); return; }
-  const m=e.target.closest("[data-sm]"); if(m){ const k=m.dataset.sm; s[k]=!s[k]; if(s[k]){ (k==="fc250")?s.fc200=false:s.fc250=false; if(!s.time) s.time=nowHM(); } touchSampling(); renderSampling(); return; }
-  const p=e.target.closest("[data-pad]"); if(p) openPad("チル深さ (mm)",`採取 No.${+row.dataset.s+1}`,s.chill,true,v=>{ s.chill=v; if(v&&!s.time) s.time=nowHM(); touchSampling(); renderSampling(); }); });
+  const m=e.target.closest("[data-sm]"); if(m){ const k=m.dataset.sm; s[k]=!s[k]; if(s[k]){ (k==="fc250")?s.fc200=false:s.fc250=false; if(!s.time) s.time=nowHM(); } if(s.fc200) s.chill=""; touchSampling(); renderSampling(); return; }
+  const p=e.target.closest("[data-pad]"); if(p) openPad("チル深さ (mm)",`採取 No.${+row.dataset.s+1}`,s.chill,true,v=>{ s.chill=v; s.fc250=!!v; s.fc200=false; if(v&&!s.time) s.time=nowHM(); touchSampling(); renderSampling(); }); });
 $("sampling").addEventListener("input",e=>{ const row=e.target.closest(".srow"); if(!row||VIEW||e.target.dataset.sk!=="time") return; state.sampling.rows[+row.dataset.s].time=e.target.value; touchSampling(); });
 $("recordCheck").addEventListener("input",e=>{ if(VIEW) return; state.recordCheck=e.target.value.trim(); state.hu=Date.now(); save(); Sync.queue("header",""); });
 $("btnAddEv").onclick=()=>{ if(VIEW) return; const ev={id:uid(),u:Date.now(),start:nowHM(),end:"",person:lastWorker(state.blocks.length-1,state.blocks[state.blocks.length-1].rows.length)||"",content:"",action:""}; state.events.push(ev); save(); Sync.queue("event",ev.id); renderEvents(); };
@@ -756,8 +768,8 @@ function dataRows(){ const out=[DATA_HEAD];
   state.blocks.forEach((b,c)=>b.rows.forEach((r,i)=>{ if(!rowHas(r)) return;
     out.push([state.date,state.equip,c+1,b.mat,b.mangan,b.ryuka,b.tp?"○":"",i+1,r.time,r.hin,specTxt(r),r.temp,r.judge,r.retemp,r.rejudge,r.rrtemp,r.rrjudge,finalJ(r),r.ret,r.worker,state.recordCheck]); }));
   return out; }
-function samplingRows(){ const out=[["生産日","号機","No","採取時間","材質","チル深さ(mm)"]];
-  state.sampling.rows.forEach((s,i)=>{ if(!sHas(s)) return; out.push([state.date,state.equip,i+1,s.time,[s.fc250?"FC250":"",s.fc200?"FC200":""].filter(Boolean).join("・"),s.chill]); });
+function samplingRows(){ const out=[["生産日","号機","No","採取時間","チル深さ(mm)"]];
+  state.sampling.rows.forEach((s,i)=>{ if(!sHas(s)) return; out.push([state.date,state.equip,i+1,s.time,s.chill]); });
   return out; }
 function eventRows(){ const out=[["生産日","号機","No","発生時間","終了時間","担当","異常/変化点内容","処置内容"]];
   liveEvents().forEach((e,i)=>out.push([state.date,state.equip,i+1,e.start,e.end,e.person,e.content,e.action])); return out; }
@@ -778,9 +790,9 @@ function buildNippoSheet(){
       S.set(0,y,i+1,B); S.set(1,y,r.time,B); S.set(2,y,r.temp,J(r.judge)); S.set(3,y,r.judge,J(r.judge)); S.set(4,y,r.retemp,J(r.rejudge)); S.set(5,y,r.rejudge,J(r.rejudge));
       S.set(6,y,r.rrtemp,J(r.rrjudge)); S.set(7,y,r.rrjudge,J(r.rrjudge)); S.set(8,y,r.ret,B); S.set(9,y,r.worker,B); S.set(10,y,r.hin,BL); S.set(11,y,specTxt(r),B); y++; });
     y++; });
-  S.merge(0,y,5,y,"採取時間・材質・チル深さ",st({font:1,fill:"head",border:1})); y++;
-  S.set(0,y,"No",H); S.merge(1,y,2,y,"採取時間",H); S.merge(3,y,4,y,"材質",H); S.set(5,y,"チル深さ(mm)",H); y++;
-  const SR=state.sampling.rows.filter(sHas); (SR.length?SR:[blankSRow()]).forEach((s,i)=>{ S.set(0,y,SR.length?i+1:"",B); S.merge(1,y,2,y,s.time,B); S.merge(3,y,4,y,[s.fc250?"FC250":"",s.fc200?"FC200":""].filter(Boolean).join("・"),B); S.set(5,y,s.chill,B); y++; });
+  S.merge(0,y,5,y,"採取時間・チル深さ",st({font:1,fill:"head",border:1})); y++;
+  S.set(0,y,"No",H); S.merge(1,y,2,y,"採取時間",H); S.merge(3,y,5,y,"チル深さ(mm)",H); y++;
+  const SR=state.sampling.rows.filter(sHas); (SR.length?SR:[blankSRow()]).forEach((s,i)=>{ S.set(0,y,SR.length?i+1:"",B); S.merge(1,y,2,y,s.time,B); S.merge(3,y,5,y,s.chill,B); y++; });
   y++;
   S.merge(0,y,L,y,"異常/変化点履歴",st({font:1,fill:"head",border:1})); y++;
   S.set(0,y,"発生",H); S.set(1,y,"〜",H); S.set(2,y,"担当",H); S.merge(3,y,7,y,"異常/変化点内容",H); S.merge(8,y,L,y,"処置内容",H); y++;
@@ -791,7 +803,7 @@ function buildNippoSheet(){
 }
 function tableSheet(name,rows,widths){ const S=new Sheet(name); S.freeze=1; S.cols=widths; const H=st({font:1,fill:"head",border:1,h:"center",wrap:true});
   rows.forEach((row,r)=>row.forEach((v,c)=>S.set(c,r,v,r===0?H:st({border:1})))); S.autoFilter="A1:"+ref(rows[0].length-1,Math.max(rows.length-1,0)); S.heights[0]=32; return S; }
-function buildXlsx(){ return workbook([buildNippoSheet(), tableSheet("データ",dataRows(),[11,7,8,8,9,9,7,5,7,16,11,8,6,9,6,9,6,8,8,10,10]), tableSheet("TP採取",samplingRows(),[11,7,5,9,14,11]), tableSheet("異常変化点",eventRows(),[11,7,5,9,9,10,50,50])]); }
+function buildXlsx(){ return workbook([buildNippoSheet(), tableSheet("データ",dataRows(),[11,7,8,8,9,9,7,5,7,16,11,8,6,9,6,9,6,8,8,10,10]), tableSheet("TP採取",samplingRows(),[11,7,5,9,11]), tableSheet("異常変化点",eventRows(),[11,7,5,9,9,10,50,50])]); }
 $("btnCsv").onclick=async()=>{
   if(!state.blocks.some(blockHas)&&!samplingRows()[1]&&!liveEvents().length){ toast("入力データがありません"); return; }
   await Sync.flush();
@@ -969,6 +981,11 @@ const Melt=(function(){
     box.className="meltbar"+(bad?" bad":"");
     box.innerHTML=P.filter(Boolean).join("")+(bad?`<div class="mwarn">⚠ 材質が違います！ ${esc(mine.label)} ${chip(mine.mat)} ／ ${MELT_ROLE==="pour"?"出湯済みの湯":"溶解中"} ${chip(tgt.mat)}　溶解工程に確認してください / Bahan berbeda! Cek ke peleburan</div>`:"");
   }
+  // ヘッダーが上に固定される画面ではその下に、固定されない画面（スマホ）では一番上に残す
+  function place(){ const box=$("stickTop"), h=document.querySelector("header.top"); if(!box||!h) return;
+    const top=getComputedStyle(h).position==="sticky"?h.offsetHeight:0; document.documentElement.style.setProperty("--meltTop",top+"px");
+    box.classList.toggle("stuck",box.getBoundingClientRect().top<=top+1&&window.scrollY>0); }
+  window.addEventListener("scroll",place,{passive:true}); window.addEventListener("resize",place); setTimeout(place,300);
   setInterval(()=>{ if(document.visibilityState==="visible") load(); },40000);
   setInterval(render,4000);
   document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") load(); });
