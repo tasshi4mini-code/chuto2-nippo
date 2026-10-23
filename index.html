@@ -240,6 +240,8 @@ label.sup input{border:2px solid #e53935;background:#fff1f1;color:#b00020;font-w
 label.sup input::placeholder{color:#e57373;font-weight:normal}
 .srow input.padin:disabled{background:#eef0f3;color:#8a93a3;border-style:dashed}
 .meltbar[hidden]{display:none!important}
+.tcell .tclr{min-width:40px;padding:4px 6px;color:#b00020;font-weight:bold}
+body.view .tclr{display:none}
 </style>
 </head>
 <body>
@@ -476,7 +478,7 @@ function dayIdx(d){ const [y,m,dd]=d.split("-").map(Number); return Date.UTC(y,m
 function pourAbs(r){ const t=mins(r.time); if(t==null) return null; return dayIdx(state.date)*1440+t+(t<DAY_START*60?1440:0); }
 // 造型日報から、その時間に流している製品を決める
 function applyAuto(b,r){
-  if(!r.pm){ const p=Link.productAt(pourAbs(r)); if(p){ r.hin=p.hin; r.spec=p.temp; r.mat=p.mat; } }
+  if(!r.pm){ const p=Link.productAt(pourAbs(r)); if(p){ r.hin=p.hin; r.spec=p.temp; r.mat=p.mat; } else if(Link.ready()){ r.hin=""; r.spec=""; r.mat=""; } }
   const sp=parseSpec(r.spec);
   if(!r.jm) r.judge=autoJ(r.temp,sp);
   if(!r.rjm) r.rejudge=autoJ(r.retemp,sp);
@@ -512,7 +514,7 @@ function renderRows(){
   $("rows").innerHTML=b.rows.map((r,i)=>`
     <div class="mrow" data-row="${i}">
       <div class="no">${i+1}</div>
-      <div class="tcell"><span class="ml">時間 waktu</span><input type="time" data-k="time" value="${esc(r.time)}" ${VIEW?"readonly":""}><button data-now="1">今</button></div>
+      <div class="tcell"><span class="ml">時間 waktu</span><input type="time" data-k="time" value="${esc(r.time)}" ${VIEW?"readonly":""}><button data-now="1">今</button><button data-tclr="1" class="tclr" aria-label="時間を消す">×</button></div>
       <div><span class="ml">受湯 [℃]</span>${padInp("temp",r.temp,tcls(r,"judge"))}</div>
       <div><span class="ml">判定</span>${jbtn(r,"judge","jm")}</div>
       <div><span class="ml">再測定 [℃]</span>${padInp("retemp",r.retemp,tcls(r,"rejudge"))}</div>
@@ -524,6 +526,13 @@ function renderRows(){
       <div class="pline">${prodChip(r)}</div>
     </div>`).join("");
 }
+// 時間の入力中などに、行を作り直さずに製品・判定だけを書きかえる（iPadの時間の選択が閉じないように）
+function refreshRowsInPlace(){ const b=state.blocks[sel];
+  document.querySelectorAll("#rows .mrow").forEach(el=>{ const i=+el.dataset.row, r=b.rows[i]; if(!r) return;
+    const t=el.querySelector('[data-k="time"]'); if(t&&document.activeElement!==t&&t.value!==r.time) t.value=r.time;
+    const pl=el.querySelector(".pline"); if(pl) pl.innerHTML=prodChip(r);
+    [["temp","judge","jm"],["retemp","rejudge","rjm"],["rrtemp","rrjudge","rrjm"]].forEach(([k,f,mf])=>{ const inp=el.querySelector(`[data-k="${k}"]`); if(inp) inp.className="padin "+tcls(r,f);
+      const jb=el.querySelector(`[data-j="${f}"]`); if(jb) jb.outerHTML=jbtn(r,f,mf); }); }); }
 function renderTable(){
   const out=[];
   state.blocks.forEach((b,c)=>b.rows.forEach((r,i)=>{ if(!rowHas(r)) return; const sp=parseSpec(r.spec);
@@ -589,7 +598,8 @@ $("btnTp").onclick=()=>{ if(VIEW) return; const b=state.blocks[sel]; b.tp=!b.tp;
 $("matBtns").addEventListener("click",e=>{ const x=e.target.closest("[data-mat]"); if(!x||VIEW) return; const b=state.blocks[sel]; if(b.mat===x.dataset.mat&&b.matM){ b.matM=false; b.mat=""; } else { b.mat=x.dataset.mat; b.matM=true; } touchBlock(sel); renderRows(); refreshLight(); });
 $("rows").addEventListener("click",e=>{
   const row=e.target.closest(".mrow"); if(!row||VIEW) return; const i=+row.dataset.row, b=state.blocks[sel], r=b.rows[i];
-  if(e.target.closest("[data-now]")){ r.time=nowHM(); rowStart(sel,i); touchBlock(sel); renderRows(); refreshLight(); return; }
+  if(e.target.closest("[data-now]")){ r.time=nowHM(); rowStart(sel,i); touchBlock(sel); renderRows(); refreshLight(); Link.load(true,true); return; }
+  if(e.target.closest("[data-tclr]")){ r.time=""; touchBlock(sel); renderRows(); refreshLight(); return; }
   const pin=e.target.closest("[data-pad]"); if(pin){ const k=pin.dataset.k, sp=parseSpec(r.spec);
     openPad(`チャージ${sel+1} No.${i+1}　${PADL[k]}`, k==="ret"?"":(sp?`規格 ${specLabel(sp)}　${r.hin}`:"規格なし（判定は手で）"), r[k], k!=="ret", v=>{ r[k]=v; if(v!=="") rowStart(sel,i); touchBlock(sel); renderRows(); refreshLight(); if(v!==""&&k!=="ret") Link.load(true,true); }); return; }
   if(e.target.closest("[data-prod]")){ openProd(i); return; }
@@ -599,9 +609,11 @@ $("rows").addEventListener("click",e=>{
     else { r[mf]=true; r[f]=r[f]==="○"?"×":(r[f]==="×"?"":"○"); if(!r[f]) r[mf]=false; }
     if(r[f]) rowStart(sel,i); touchBlock(sel); renderRows(); refreshLight(); }
 });
-$("rows").addEventListener("input",e=>{ const row=e.target.closest(".mrow"); if(!row||VIEW||e.target.dataset.k!=="time") return; const i=+row.dataset.row, r=state.blocks[sel].rows[i]; r.time=e.target.value; if(r.time) rowStart(sel,i); touchBlock(sel); refreshLight(); });
+$("rows").addEventListener("input",e=>{ const row=e.target.closest(".mrow"); if(!row||VIEW||e.target.dataset.k!=="time") return; const i=+row.dataset.row, r=state.blocks[sel].rows[i]; r.time=e.target.value; if(r.time) rowStart(sel,i); touchBlock(sel); refreshRowsInPlace(); refreshLight(); });
+// 時間を手で入れ終わったら、造型日報を読み直して、その時間に造型していた製品で判定する
+$("rows").addEventListener("focusout",e=>{ if(e.target.dataset.k!=="time"||VIEW) return; Link.load(true,true).then(()=>{ if(document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.k==="time") refreshRowsInPlace(); else renderRows(); }); });
 $("rows").addEventListener("change",e=>{ const row=e.target.closest(".mrow"); if(!row||VIEW) return; const i=+row.dataset.row, r=state.blocks[sel].rows[i];
-  if(e.target.dataset.k==="time"){ renderRows(); return; }
+  if(e.target.dataset.k==="time"){ r.time=e.target.value; touchBlock(sel); refreshRowsInPlace(); refreshLight(); return; }
   if(e.target.dataset.k!=="worker") return; let v=e.target.value;
   if(v==="__add"){ v=(prompt("作業者の名前を入れてください / Tulis nama")||"").trim(); if(!v){ renderRows(); return; } rememberWorker(v); }
   r.worker=v; if(v) LS.set(APP+":lastW",v); if(v&&!r.time) r.time=nowHM();
@@ -846,7 +858,8 @@ const Link=(function(){
     const r=await fetch(u,{redirect:"follow"}); const j=await r.json(); if(!j.ok) throw new Error(j.error||"error"); return j.items||[]; }
   function prevDate(d){ const x=new Date(d+"T00:00:00"); x.setDate(x.getDate()-1); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); }
   // 造型日報は朝8時で日付が切りかわる
-  const Z_START=8;
+  // 造型日報の1日は朝7時から翌朝7時まで（7時前の開始時刻は夜勤＝次の日の朝）
+  const Z_START=7;
   let again=false;
   async function load(force,now){
     if(!on()||!state||navigator.onLine===false) return;
@@ -859,7 +872,7 @@ const Link=(function(){
           list.push({hin:it0.hin,name:it0.name||"",mat:it0.mat||"",temp:x.temp||"",st:x.st,abs:dayIdx(zd)*1440+t+(t<Z_START*60?1440:0)}); }); }
       list.sort((a,b)=>a.abs-b.abs); prods=list; at=Date.now(); key=k; err="";
       if(state.date+"|"+state.equip===k){ let ch=false; state.blocks.forEach((b,ci)=>{ const before=JSON.stringify(b.rows); b.rows.forEach(r=>{ if(rowHas(r)) applyAuto(b,r); }); if(JSON.stringify(b.rows)!==before&&!VIEW){ b.u=Date.now(); Sync.queue("block",ci); ch=true; } });
-        if(ch){ save(); const act=document.activeElement; if((now&&!$("dlgPad").open)||!(act&&act.closest&&act.closest("#entryCard"))) renderRows(); refreshLight(); } }
+        if(ch){ save(); const act=document.activeElement; const tFocus=act&&act.dataset&&act.dataset.k==="time"; if(tFocus) refreshRowsInPlace(); else if((now&&!$("dlgPad").open)||!(act&&act.closest&&act.closest("#entryCard"))) renderRows(); refreshLight(); } }
     }catch(e){ err=String(e.message||e); }
     busy=false; renderLink(); if(again){ again=false; load(true); } }
   function productAt(abs){ if(abs==null) return null; let best=null; prods.forEach(p=>{ if(p.abs<=abs&&abs-p.abs<12*60) best=p; }); return best; }
@@ -870,7 +883,8 @@ const Link=(function(){
     if(!at) return {cls:"",html:"造型日報を読み込み中…"};
     const L=list(), t=new Date(at);
     return {cls:"ok",html:`造型日報（${esc(state.equip)}）と連動中：今日の製品 ${L.length}件 <span class="small">（${t.getHours()}:${String(t.getMinutes()).padStart(2,"0")} 読込）</span> — 受湯温度を入れるたびに造型日報を読み直し、その時間の製品の注湯温度規格で ○× を自動で付けます（規格の幅が${TOL_W}℃以下なら ±${TOL}℃ まで○）`}; }
-  return {load,productAt,list,status,cfg,setCfg,on};
+  function ready(){ return on()&&at>0&&!err; }
+  return {load,productAt,list,status,cfg,setCfg,on,ready};
 })();
 
 // ---- スプレッドシート同期 ----
@@ -931,13 +945,14 @@ $("btnZkSave").onclick=async()=>{ Link.setCfg($("zkUrl").value.trim(),$("zkToken
 // ---- 作業者の名前（全端末共通：造型日報のスプレッドシートに保存）----
 // 使う側で CREW_URL() CREW_TOKEN() CREW_CHANGED() を用意する
 const Crew=(function(){
-  let S=LS.get("crew:shared",null);   // 造型日報と注湯日報で同じ名前を使う
+  const K=(typeof CREW_KEY!=="undefined")?CREW_KEY:"crew:shared";   // 造型日報と注湯日報で同じ名前を使う（ショット日報は別の名前）
+  let S=LS.get(K,null);
   function list(){ return (S&&S.list&&S.list.length)?S.list:null; }
   async function pull(){ const u=CREW_URL(); if(!u) return;
     try{ const r=await fetch(u+(u.includes("?")?"&":"?")+new URLSearchParams({action:"workers",token:CREW_TOKEN()}),{redirect:"follow"}); const j=await r.json();
-      if(j.ok&&j.list&&j.list.length&&JSON.stringify(j.list)!==JSON.stringify(list())){ S={list:j.list,u:j.u||Date.now()}; LS.set("crew:shared",S); CREW_CHANGED(); } }catch(e){} }
+      if(j.ok&&j.list&&j.list.length&&JSON.stringify(j.list)!==JSON.stringify(list())){ S={list:j.list,u:j.u||Date.now()}; LS.set(K,S); CREW_CHANGED(); } }catch(e){} }
   async function add(name){ name=String(name||"").trim(); if(!name) return; const base=list()||WORKERS0.slice(); if(base.includes(name)) return;
-    S={list:[...base,name],u:Date.now()}; LS.set("crew:shared",S); CREW_CHANGED(); const u=CREW_URL(); if(!u) return;
+    S={list:[...base,name],u:Date.now()}; LS.set(K,S); CREW_CHANGED(); const u=CREW_URL(); if(!u) return;
     try{ await fetch(u,{method:"POST",body:JSON.stringify({token:CREW_TOKEN(),action:"setWorkers",list:S.list,u:S.u}),redirect:"follow"}); await pull(); }catch(e){} }
   setInterval(()=>{ if(document.visibilityState==="visible") pull(); },60000);
   return {list,pull,add};
