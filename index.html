@@ -193,6 +193,10 @@ button{font-size:17px}
 .chip.m-FC200,.chip.m-FC250,.chip.m-otherH,.chip.m-otherL{background:var(--mb);border-color:var(--mc);color:var(--mt)}
 .lg-m{padding:2px 10px;border-radius:6px;border:2px solid var(--mc);background:var(--mb);color:var(--mt);font-weight:bold}
 .legend .lg-m::before,.legend .lg-txt::before{display:none}
+/* 新しい材質（溶解日報と同じ色） */
+.m-SiL{--mc:#7b3fd0;--mb:#e9dcff;--mt:#3f1a80}.m-1204{--mc:#0f8a99;--mb:#d4f1f4;--mt:#064a53}
+.chip.m-SiL,.chip.m-1204{background:var(--mb);border-color:var(--mc);color:var(--mt)}
+.mchip.m-SiL{background:#e9dcff;border-color:#7b3fd0;color:#3f1a80}.mchip.m-1204{background:#d4f1f4;border-color:#0f8a99;color:#064a53}
 .smat{display:flex;gap:6px}.smat button{min-height:48px;font-weight:bold;flex:1}.smat button.on{background:var(--mc);color:#fff;border-color:var(--mc)}
 .prodlist{max-height:55vh;overflow-y:auto;margin-top:8px;display:grid;gap:6px}
 .prodlist button{text-align:left;min-height:54px;font-size:16px}.prodlist button.on{background:#e3eeff;border-color:var(--pri)}
@@ -282,7 +286,7 @@ body.view .tclr{display:none}
   <section class="card" id="chargeCard">
     <h2>チャージを選択 <span class="id">Pilih muatan</span></h2>
     <div class="charges" id="charges"></div>
-    <div class="legend"><span class="lg-m m-FC200">FC200</span><span class="lg-m m-FC250">FC250</span><span class="lg-m m-otherH">その他H</span><span class="lg-m m-otherL">その他L</span><span class="lg-ng">×あり</span><span class="lg-txt">チャージは足りなくなると自動でふえます</span></div>
+    <div class="legend"><span class="lg-m m-FC200">FC200</span><span class="lg-m m-FC250">FC250</span><span class="lg-m m-otherH">その他H</span><span class="lg-m m-otherL">その他L</span><span class="lg-m m-SiL">その他SiL</span><span class="lg-m m-1204">1204</span><span class="lg-ng">×あり</span><span class="lg-txt">チャージは足りなくなると自動でふえます</span></div>
   </section>
 
   <section class="card" id="entryCard">
@@ -296,7 +300,7 @@ body.view .tclr{display:none}
       <label class="f">硫化鉄 <span class="id">RYUKATETSU</span> (kg)<input id="c_ryuka" class="padin" readonly inputmode="none" placeholder="タップで入力"></label>
       <div class="f"><span class="small">TP採取 <span class="id">Koleksi TP</span></span><button id="btnTp" class="tpbtn">TP採取</button></div>
       <div class="f wide"><span class="small">材質 <span class="id">Bahan</span> <span id="matNote" class="small" style="color:#2e7d32"></span></span>
-        <div class="matb" id="matBtns"><button data-mat="FC200" class="m-FC200">FC200</button><button data-mat="FC250" class="m-FC250">FC250</button><button data-mat="その他H" class="m-otherH">その他H</button><button data-mat="その他L" class="m-otherL">その他L</button></div></div>
+        <div class="matb" id="matBtns"><button data-mat="FC200" class="m-FC200">FC200</button><button data-mat="FC250" class="m-FC250">FC250</button><button data-mat="その他H" class="m-otherH">その他H</button><button data-mat="その他L" class="m-otherL">その他L</button><button data-mat="その他SiL" class="m-SiL">その他SiL</button><button data-mat="1204" class="m-1204">1204</button></div></div>
     </div>
     <div class="rowhead">
       <div>No</div><div>時間<small>waktu</small></div><div>受湯 ℃<small>Mulai suhu</small></div><div>判定</div>
@@ -419,8 +423,8 @@ const MINC=6, ADDC=3, MINR=5, ADDR=2, MINS=4, ADDS=2;
 const EQUIPS=["1号機","2号機"], EQUIP0="2号機";
 const CFG=window.SUNA_CONFIG||{};
 const WORKERS0=CFG.workers||["神林","ジャヤ","バワ","デワ","ロシ","スブラタ"];
-const MATS=[["FC200","FC200"],["FC250","FC250"],["その他H","その他H"],["その他L","その他L"]];
-const MATC={"FC200":"m-FC200","FC250":"m-FC250","その他H":"m-otherH","その他L":"m-otherL"};
+const MATS=[["FC200","FC200"],["FC250","FC250"],["その他H","その他H"],["その他L","その他L"],["その他SiL","その他SiL"],["1204","1204"]];
+const MATC={"FC200":"m-FC200","FC250":"m-FC250","その他H":"m-otherH","その他L":"m-otherL","その他SiL":"m-SiL","1204":"m-1204"};
 const VIEW=/[?&#](view|export)\b/.test(location.search+location.hash);
 if(VIEW) document.body.classList.add("view");
 const LS={ get(k,d){ try{ const v=localStorage.getItem(k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
@@ -963,7 +967,7 @@ const Crew=(function(){
 const Melt=(function(){
   const url=()=>CFG.yokaiUrl||"", token=()=>CFG.yokaiToken||"OWHKxlWeao3gjTQS";
   const ML={FC200:"FC200",FC250:"FC250",otherH:"その他H",otherL:"その他L",other:"その他"};
-  const MC={"FC200":"m-FC200","FC250":"m-FC250","その他H":"m-otherH","その他L":"m-otherL"};
+  const MC={"FC200":"m-FC200","FC250":"m-FC250","その他H":"m-otherH","その他L":"m-otherL","その他SiL":"m-SiL","1204":"m-1204"};
   let info=null, at=0, err="", busy=false;
   const ymd=d=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
   function yd(){ const d=new Date(); if(d.getHours()<8) d.setDate(d.getDate()-1); return ymd(d); }   // 溶解日報は朝8時で日付が切りかわる
