@@ -244,6 +244,9 @@ label.sup input{border:2px solid #e53935;background:#fff1f1;color:#b00020;font-w
 label.sup input::placeholder{color:#e57373;font-weight:normal}
 .srow input.padin:disabled{background:#eef0f3;color:#8a93a3;border-style:dashed}
 .meltbar[hidden]{display:none!important}
+.nightbar{flex-basis:100%;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#311b92;color:#fff;border-radius:10px;padding:8px 12px;font-weight:bold;font-size:15px}
+.nightbar[hidden]{display:none!important}
+.nightbar button{min-height:42px;font-weight:bold;background:#fff;color:#311b92;border:0;border-radius:8px;padding:0 12px;margin-left:auto}
 .tcell .tclr{min-width:40px;padding:4px 6px;color:#b00020;font-weight:bold}
 body.view .tclr{display:none}
 </style>
@@ -265,6 +268,7 @@ body.view .tclr{display:none}
 <div class="sticktop" id="stickTop">
   <a class="swbtn" id="btnSwitch" data-to="../zokei-nippo/" href="../zokei-nippo/">◀ 造型日報へ<small id="swEq"></small></a>
   <div class="meltbar" id="meltBar" hidden></div>
+  <div class="nightbar" id="nightBar" hidden></div>
 </div>
 
 <main>
@@ -439,6 +443,14 @@ let state, sel=0;
 // 朝7時で日付が切りかわる（7時前の注湯は前の日の日報）
 const DAY_START=7;
 function todayStr(){ const d=new Date(); if(d.getHours()<DAY_START) d.setDate(d.getDate()-1); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+// 朝（7:00〜10:00）：前日の日報で、夜中に注湯したチャージがあり、当日の日報がまだ空なら、前日の日報を続けて使う
+function prevDay(d){ const x=new Date(d+"T00:00:00"); x.setDate(x.getDate()-1); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function lastBlockInfo(st){ let li=-1, night=false; (st.blocks||[]).forEach((b,i)=>{ if((b.rows||[]).some(x=>x&&x.time)){ li=i; } }); if(li<0) return null;
+  (st.blocks||[]).forEach((b,i)=>{ if(i<=li&&(b.rows||[]).some(x=>{ const m=/^(\d{1,2}):(\d{2})/.exec((x&&x.time)||""); return m&&(+m[1]*60+(+m[2]))<DAY_START*60; })) night=true; });
+  return {no:li+1,night}; }
+function morningPrev(eq){ const h=new Date().getHours(); if(h<DAY_START||h>=10) return null; const t=todayStr(), p=prevDay(t);
+  const ps=LS.get(APP+":day:"+p+"|"+eq,null), ts=LS.get(APP+":day:"+t+"|"+eq,null); if(!ps) return null;
+  const pi=lastBlockInfo(ps), ti=ts?lastBlockInfo(ts):null; return (pi&&pi.night&&!ti)?p:null; }
 function defaultEquip(){ const e=(LS.get(APP+":last",{}).equip||""); return EQUIPS.includes(e)?e:EQUIP0; }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function blankRow(){ return {time:"",temp:"",judge:"",jm:false,retemp:"",rejudge:"",rjm:false,rrtemp:"",rrjudge:"",rrjm:false,ret:"",worker:"",hin:"",spec:"",mat:"",pm:false}; }
@@ -479,10 +491,15 @@ function specLabel(sp){ if(!sp) return ""; const t=tolOf(sp); return `${sp.min}�
 function autoJ(v,sp){ const n=num(v); if(n==null||!sp) return ""; const t=tolOf(sp); return (n<sp.min-t||n>sp.max+t)?"×":"○"; }
 function mins(hm){ const m=/^(\d{1,2}):(\d{2})/.exec(hm||""); return m?(+m[1])*60+(+m[2]):null; }
 function dayIdx(d){ const [y,m,dd]=d.split("-").map(Number); return Date.UTC(y,m-1,dd)/864e5; }
-function pourAbs(r){ const t=mins(r.time); if(t==null) return null; return dayIdx(state.date)*1440+t+(t<DAY_START*60?1440:0); }
+// 注湯は「チャージ」で日を決める：夜中（0:00〜7:00）に注湯したチャージ以降は、7:00を過ぎても翌朝の時刻として扱う（最大3時間）
+const CARRY_MIN=180;
+function nightReached(ci){ for(let c=0;c<=ci&&c<state.blocks.length;c++){ if(state.blocks[c].rows.some(x=>{ const t=mins(x.time); return t!=null&&t<DAY_START*60; })) return true; } return false; }
+function pourAbs(r,b){ const t=mins(r.time); if(t==null) return null; let add=t<DAY_START*60?1440:0;
+  if(!add&&t<DAY_START*60+CARRY_MIN){ const ci=b?state.blocks.indexOf(b):-1; if(ci>=0&&nightReached(ci)) add=1440; }
+  return dayIdx(state.date)*1440+t+add; }
 // 造型日報から、その時間に流している製品を決める
 function applyAuto(b,r){
-  if(!r.pm){ const p=Link.productAt(pourAbs(r)); if(p){ r.hin=p.hin; r.spec=p.temp; r.mat=p.mat; } else if(Link.ready()){ r.hin=""; r.spec=""; r.mat=""; } }
+  if(!r.pm){ const p=Link.productAt(pourAbs(r,b)); if(p){ r.hin=p.hin; r.spec=p.temp; r.mat=p.mat; } else if(Link.ready()){ r.hin=""; r.spec=""; r.mat=""; } }
   const sp=parseSpec(r.spec);
   if(!r.jm) r.judge=autoJ(r.temp,sp);
   if(!r.rjm) r.rejudge=autoJ(r.retemp,sp);
@@ -564,7 +581,7 @@ function renderEvents(){
      <button data-del="${i}" style="align-self:end">削除</button>
    </div>`).join(""); }
 function renderWorkers(){ $("workerList").innerHTML=workerNames().map(w=>`<option value="${esc(w)}">`).join(""); }
-function renderAll(){ renderHeader(); renderCharges(); renderRows(); renderTable(); renderSampling(); renderEvents(); renderWorkers(); }
+function renderAll(){ renderHeader(); renderCharges(); renderRows(); renderTable(); renderSampling(); renderEvents(); renderWorkers();  renderNight(); }
 function refreshLight(){ renderCharges(); renderTable(); }
 function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2600); }
 function askConfirm(msg,yes,no){ return new Promise(res=>{ const d=$("dlgConfirm"); $("cfMsg").textContent=msg; $("cfYes").textContent=yes||"OK"; $("cfNo").textContent=no||"キャンセル";
@@ -988,7 +1005,7 @@ const Melt=(function(){
   function same(a,b){ a=norm(a); b=norm(b); if(!a||!b) return true; return a===b||a.startsWith(b)||b.startsWith(a); }
   const chip=m=>`<b class="mchip ${MC[m]||""}">${esc(m||"－")}</b>`;
   function render(){ const box=$("meltBar"); if(!box) return;
-    if(!url()||!state||state.date!==todayStr()){ box.hidden=true; return; } box.hidden=false;
+    if(!url()||!state||(state.date!==todayStr()&&state.date!==yd())){ box.hidden=true; return; } box.hidden=false;
     if(!info){ box.className="meltbar"; box.innerHTML=err?`溶解日報を読み込めませんでした（${esc(err)}）`:"溶解日報を読み込み中…"; return; }
     const {melt,pour,next}=info, P=[];
     const sMelt=melt?`<span class="mi">🔥 溶解中 <small>Sedang dilebur</small> No.${melt.no} ${chip(melt.mat)}${melt.plan?"<small>(予定)</small>":""}${melt.t?` <small>${esc(melt.t)}〜</small>`:""}</span>`:`<span class="mi">🔥 溶解中：なし</span>`;
@@ -1038,10 +1055,18 @@ function CREW_CHANGED(){ renderWorkers(); const act=document.activeElement; if(!
   window.addEventListener("offline",net);
 })();
 
+
+// ---- 夜勤の日報を朝まで続けているときの帯 ----
+function renderNight(){ const bar=$("nightBar"); if(!bar) return; const t=todayStr(), h=new Date().getHours();
+  if(state.date!==prevDay(t)||h<DAY_START||h>=12){ bar.hidden=true; return; } const li=lastBlockInfo(state); if(!li||!li.night){ bar.hidden=true; return; }
+  const md=d=>{ const [,m,dd]=d.split("-"); return `${+m}/${+dd}`; };
+  bar.hidden=false; bar.innerHTML=`🌙 夜勤（${md(state.date)}）の日報です　${li.no}チャージ目 注湯中 <span class="id" style="color:#d1c4e9">Laporan shift malam</span><button id="btnToToday">注湯が終わったら → 当日（${md(t)}）の日報へ</button>`; }
+document.addEventListener("click",async e=>{ if(e.target.closest&&e.target.closest("#btnToToday")){ try{ await Sync.flush(); }catch(x){} load(todayStr(),state.equip); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); renderNight(); window.scrollTo({top:0,behavior:"smooth"}); } });
+setInterval(renderNight,30000);
 // ---- init ----
 { const last=LS.get(APP+":last",null); const t=todayStr(); const qp=new URLSearchParams(location.search), qe=qp.get("equip"), qd=qp.get("date");
   if(qe&&EQUIPS.includes(qe)){ load((qd&&/^\d{4}-\d{2}-\d{2}$/.test(qd))?qd:t, qe); try{ history.replaceState(null,"",location.pathname+(VIEW?"?view":"")); }catch(e){} }
-  else load(t,(last&&last.date===t&&last.equip)||defaultEquip()); }
+  else { const eq=(last&&last.equip)||defaultEquip(); const pv=morningPrev(eq); load(pv||t,(last&&(last.date===t||last.date===pv)&&last.equip)||eq); } }
 // ---- もう一つの日報へ切りかえ（同じ号機で開く）----
 { const sw=$("btnSwitch"); const upd=()=>{ $("swEq").textContent=state.equip; };
   sw.addEventListener("click",async e=>{ e.preventDefault(); try{ await Sync.flush(); }catch(x){} const q=new URLSearchParams({equip:state.equip}); if(state.date!==todayStr()) q.set("date",state.date);
