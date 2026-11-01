@@ -494,12 +494,22 @@ function dayIdx(d){ const [y,m,dd]=d.split("-").map(Number); return Date.UTC(y,m
 // 注湯は「チャージ」で日を決める：夜中（0:00〜7:00）に注湯したチャージ以降は、7:00を過ぎても翌朝の時刻として扱う（最大3時間）
 const CARRY_MIN=180;
 function nightReached(ci){ for(let c=0;c<=ci&&c<state.blocks.length;c++){ if(state.blocks[c].rows.some(x=>{ const t=mins(x.time); return t!=null&&t<DAY_START*60; })) return true; } return false; }
-function pourAbs(r,b){ const t=mins(r.time); if(t==null) return null; let add=t<DAY_START*60?1440:0;
-  if(!add&&t<DAY_START*60+CARRY_MIN){ const ci=b?state.blocks.indexOf(b):-1; if(ci>=0&&nightReached(ci)) add=1440; }
-  return dayIdx(state.date)*1440+t+add; }
+// 時刻 → 日時：日報の上から順に時刻を見て、日付をまたいだ（時刻が6時間以上もどった）ところから翌日として扱う
+// 最初の時刻が 6:00 より前なら夜中（翌日）、6:00〜7:00 は朝早く始めた分としてその日のまま
+function timeline(){ const m=new Map(), base=dayIdx(state.date)*1440; let off=null, prev=null;
+  state.blocks.forEach(b=>b.rows.forEach(r=>{ const t=mins(r.time); if(t==null) return;
+    if(off==null) off=(t<DAY_START*60-60)?1440:0; else if(t<prev-360) off+=1440;
+    prev=t; m.set(r,base+off+t); })); return m; }
+function pourAbs(r,b){ const t=mins(r.time); if(t==null) return null; const a=timeline().get(r); return a!=null?a:dayIdx(state.date)*1440+t+(t<DAY_START*60-60?1440:0); }
+// この時刻より前で、いちばん新しい「手で選んだ製品」の行
+function manualBefore(r0,ab){ if(ab==null) return null; let best=null;
+  state.blocks.forEach(b=>b.rows.forEach(r=>{ if(r===r0||!r.pm||!r.hin) return; const a=pourAbs(r,b); if(a!=null&&a<=ab&&(!best||a>=best.ab)) best={r,ab:a}; })); return best; }
 // 造型日報から、その時間に流している製品を決める
 function applyAuto(b,r){
-  if(!r.pm){ const p=Link.productAt(pourAbs(r,b)); if(p){ r.hin=p.hin; r.spec=p.temp; r.mat=p.mat; } else if(Link.ready()){ r.hin=""; r.spec=""; r.mat=""; } }
+  if(!r.pm){ const ab=pourAbs(r,b), p=Link.productAt(ab), m=manualBefore(r,ab); r.pi=false;
+    // 前の行で製品を手で選んでいて、そのあと造型日報で製品が切りかわっていなければ、手で選んだ製品を引き継ぐ
+    if(m&&ab!=null&&Link.productAt(m.ab)===p){ r.hin=m.r.hin; r.spec=m.r.spec; r.mat=m.r.mat; r.pi=true; }
+    else if(p){ r.hin=p.hin; r.spec=p.temp; r.mat=p.mat; } else if(Link.ready()){ r.hin=""; r.spec=""; r.mat=""; } }
   const sp=parseSpec(r.spec);
   if(!r.jm) r.judge=autoJ(r.temp,sp);
   if(!r.rjm) r.rejudge=autoJ(r.retemp,sp);
@@ -524,7 +534,7 @@ function wSel(r){ const names=workerNames(); if(r.worker&&!names.includes(r.work
   return `<select data-k="worker" class="wsel" ${VIEW?"disabled":""}><option value="">－</option>${names.map(n=>`<option ${n===r.worker?"selected":""}>${esc(n)}</option>`).join("")}<option value="__add">＋ 追加</option></select>`; }
 function tcls(r,f){ const v=r[f]; return v==="×"?"ng":v==="○"?"ok":""; }
 function prodChip(r){ if(!r.hin&&!rowHas(r)) return ""; const sp=parseSpec(r.spec);
-  return `<button class="prod ${r.pm?"man":""} ${r.hin?"":"none"}" data-prod="1">${r.hin?`<b>${esc(r.hin)}</b> ${sp?specLabel(sp):"規格なし"}${r.pm?" (手で選択)":""}`:"製品：造型日報から見つかりません（タップで選ぶ）"}</button>`; }
+  return `<button class="prod ${r.pm||r.pi?"man":""} ${r.hin?"":"none"}" data-prod="1">${r.hin?`<b>${esc(r.hin)}</b> ${sp?specLabel(sp):"規格なし"}${r.pm?" (手で選択)":(r.pi?" (前の行の手で選択を引き継ぎ)":"")}`:"製品：造型日報から見つかりません（タップで選ぶ）"}</button>`; }
 function renderRows(){
   const b=state.blocks[sel];
   $("chargeTitle").textContent="チャージ "+(sel+1);
@@ -582,7 +592,7 @@ function renderEvents(){
    </div>`).join(""); }
 function renderWorkers(){ $("workerList").innerHTML=workerNames().map(w=>`<option value="${esc(w)}">`).join(""); }
 function renderAll(){ renderHeader(); renderCharges(); renderRows(); renderTable(); renderSampling(); renderEvents(); renderWorkers();  renderNight(); }
-function refreshLight(){ renderCharges(); renderTable(); }
+function refreshLight(){ if(typeof renderNight==="function") try{ renderNight(); }catch(e){}  renderCharges(); renderTable(); }
 function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2600); }
 function askConfirm(msg,yes,no){ return new Promise(res=>{ const d=$("dlgConfirm"); $("cfMsg").textContent=msg; $("cfYes").textContent=yes||"OK"; $("cfNo").textContent=no||"キャンセル";
   const done=v=>{ $("cfYes").onclick=$("cfNo").onclick=null; d.onclose=null; if(d.open) d.close(); res(v); };
@@ -888,9 +898,12 @@ const Link=(function(){
     if(now){ const L=$("linkLine"); if(L){ L.className="linkline"; L.innerHTML="造型日報を確認して判定中…"; } } if(!force&&k===key&&Date.now()-at<3*60*1000) return;
     busy=true;
     try{ const d=state.date, list=[];
-      for(const zd of [prevDate(d),d]){ const items=await get(zd,state.equip);
-        items.forEach(it=>{ if(it.type!=="row") return; const x=it.raw||{}, it0=(x.items||[]).find(v=>v&&v.hin); const t=mins(x.st); if(!it0||t==null) return;
-          list.push({hin:it0.hin,name:it0.name||"",mat:it0.mat||"",temp:x.temp||"",st:x.st,abs:dayIdx(zd)*1440+t+(t<Z_START*60?1440:0)}); }); }
+      const nextD=(()=>{ const x=new Date(d+"T00:00:00"); x.setDate(x.getDate()+1); return new Date(x.getTime()-x.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
+      for(const zd of [prevDate(d),d,nextD]){ const items=await get(zd,state.equip);
+        let off=null, prev=null;
+        items.filter(it=>it.type==="row").sort((a,b)=>(+a.ref)-(+b.ref)).forEach(it=>{ const x=it.raw||{}, it0=(x.items||[]).find(v=>v&&v.hin); const t=mins(x.st); if(!it0||t==null) return;
+          if(off==null) off=(t<Z_START*60-60)?1440:0; else if(t<prev-360) off+=1440; prev=t;
+          list.push({hin:it0.hin,name:it0.name||"",mat:it0.mat||"",temp:x.temp||"",st:x.st,abs:dayIdx(zd)*1440+off+t}); }); }
       list.sort((a,b)=>a.abs-b.abs); prods=list; at=Date.now(); key=k; err="";
       if(state.date+"|"+state.equip===k){ let ch=false; state.blocks.forEach((b,ci)=>{ const before=JSON.stringify(b.rows); b.rows.forEach(r=>{ if(rowHas(r)) applyAuto(b,r); }); if(JSON.stringify(b.rows)!==before&&!VIEW){ b.u=Date.now(); Sync.queue("block",ci); ch=true; } });
         if(ch){ save(); const act=document.activeElement; const tFocus=act&&act.dataset&&act.dataset.k==="time"; if(tFocus) refreshRowsInPlace(); else if((now&&!$("dlgPad").open)||!(act&&act.closest&&act.closest("#entryCard"))) renderRows(); refreshLight(); } }
@@ -1060,6 +1073,9 @@ function CREW_CHANGED(){ renderWorkers(); const act=document.activeElement; if(!
 function renderNight(){ const bar=$("nightBar"); if(!bar) return; const t=todayStr(), h=new Date().getHours();
   if(state.date!==prevDay(t)||h<DAY_START||h>=12){ bar.hidden=true; return; } const li=lastBlockInfo(state); if(!li||!li.night){ bar.hidden=true; return; }
   const md=d=>{ const [,m,dd]=d.split("-"); return `${+m}/${+dd}`; };
+  { const B=state.blocks, tm=x=>{ const m=/^(\d{1,2}):(\d{2})/.exec((x&&x.time)||""); return m?+m[1]*60+(+m[2]):null; };
+    let lastNight=-1, lastUsed=-1; B.forEach((b,i)=>{ const ts=b.rows.map(tm).filter(v=>v!=null); if(ts.length){ lastUsed=i; if(ts.some(v=>v<DAY_START*60)) lastNight=i; } });
+    if(lastUsed>lastNight&&lastNight>=0){ bar.hidden=false; bar.innerHTML=`⚠ ${lastUsed+1}チャージ目は朝からの新しいチャージです。日勤のチャージは当日（${md(t)}）の日報に入れてください <span class="id" style="color:#d1c4e9">Masukkan ke laporan hari ini</span><button id="btnToToday">当日（${md(t)}）の日報へ</button>`; return; } }
   bar.hidden=false; bar.innerHTML=`🌙 夜勤（${md(state.date)}）の日報です　${li.no}チャージ目 注湯中 <span class="id" style="color:#d1c4e9">Laporan shift malam</span><button id="btnToToday">注湯が終わったら → 当日（${md(t)}）の日報へ</button>`; }
 document.addEventListener("click",async e=>{ if(e.target.closest&&e.target.closest("#btnToToday")){ try{ await Sync.flush(); }catch(x){} load(todayStr(),state.equip); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); renderNight(); window.scrollTo({top:0,behavior:"smooth"}); } });
 setInterval(renderNight,30000);
