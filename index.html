@@ -671,7 +671,7 @@ $("recordCheck").addEventListener("input",e=>{ if(VIEW) return; state.recordChec
 $("btnAddEv").onclick=()=>{ if(VIEW) return; const ev={id:uid(),u:Date.now(),start:nowHM(),end:"",person:lastWorker(state.blocks.length-1,state.blocks[state.blocks.length-1].rows.length)||"",content:"",action:""}; state.events.push(ev); save(); Sync.queue("event",ev.id); renderEvents(); };
 $("events").addEventListener("input",e=>{ if(VIEW) return; const box=e.target.closest(".ev"), k=e.target.dataset.ek; if(box&&k){ const ev=state.events[+box.dataset.e]; ev[k]=e.target.value; ev.u=Date.now(); save(); Sync.queue("event",ev.id); } });
 $("events").addEventListener("click",async e=>{ const d=e.target.dataset.del; if(d!=null&&!VIEW&&await askConfirm("この記録を削除しますか?")){ const ev=state.events[+d]; ev.del=true; ev.u=Date.now(); save(); Sync.queue("event",ev.id); renderEvents(); } });
-function switchDay(){ const d=$("date").value, q=$("equip").value; if(!d) return; load(d,q); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); }
+async function switchDay(){ const d=$("date").value, q=$("equip").value; if(!d) return; if(!(await canLeave(d))){ $("date").value=state.date; $("equip").value=state.equip; return; } load(d,q); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); }
 function firstOpen(){ let i=state.blocks.length-1; while(i>0&&!blockHas(state.blocks[i-1])) i--; return Math.max(0,Math.min(i,state.blocks.length-1)); }
 $("date").addEventListener("change",switchDay);
 $("equip").addEventListener("change",switchDay);
@@ -719,9 +719,9 @@ $("btnList").onclick=()=>{ listYM=ymOf(state.date||todayStr()); $("dlgList").sho
 $("mPrev").onclick=()=>{ listYM=ymShift(listYM,-1); renderList(); };
 $("mNext").onclick=()=>{ listYM=ymShift(listYM,1); renderList(); };
 $("mSel").onchange=e=>{ listYM=e.target.value; renderList(); };
-$("btnNewDay").onclick=()=>{ $("dlgList").close(); load(todayStr(),defaultEquip()); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); };
-$("savedList").addEventListener("click",e=>{ const it=e.target.closest(".list-item.open"); if(!it) return;
-  $("dlgList").close(); load(it.dataset.d,it.dataset.q); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); toast(fmtDay(it.dataset.d)+" "+it.dataset.q+" を開きました"); window.scrollTo({top:0,behavior:"smooth"}); });
+$("btnNewDay").onclick=async()=>{ $("dlgList").close(); if(!(await canLeave(todayStr()))) return; load(todayStr(),defaultEquip()); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); };
+$("savedList").addEventListener("click",async e=>{ const it=e.target.closest(".list-item.open"); if(!it) return;
+  $("dlgList").close(); if(!(await canLeave(it.dataset.d))) return; load(it.dataset.d,it.dataset.q); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); toast(fmtDay(it.dataset.d)+" "+it.dataset.q+" を開きました"); window.scrollTo({top:0,behavior:"smooth"}); });
 
 // ---- folder handle (File System Access API) ----
 let dirHandle=null;
@@ -1069,15 +1069,55 @@ function CREW_CHANGED(){ renderWorkers(); const act=document.activeElement; if(!
 })();
 
 
+// ---- v15：溶解の最終チャージが注湯で終わるまで、次の日の日報へ移れないようにする ----
+// 溶解日報（その日＝朝8時まで）の出湯済み＋溶解中のチャージ数と、注湯日報（同じ日・全号機）のチャージ数を比べる
+const Gate=(function(){
+  const yUrl=()=>CFG.yokaiUrl||"", yTok=()=>CFG.yokaiToken||"OWHKxlWeao3gjTQS"; const C={}, OK={};
+  async function getJ(base,params){ const u=base+(base.includes("?")?"&":"?")+new URLSearchParams(params); const j=await (await fetch(u,{redirect:"follow"})).json(); if(!j.ok) throw new Error(j.error||"error"); return j; }
+  const started=r=>["mat","sen","kou","dar","drM","kat","sil","temp","tap","worker"].some(k=>(r[k]||"")!=="")||(!!r.st&&!r.stAuto);
+  const nBlocks=blocks=>(blocks||[]).filter(b=>b&&(b.rows||[]).some(x=>x&&x.time)).length;
+  async function check(date,equip){ const k=date+"|"+equip;
+    try{ if(!yUrl()) return (C[k]={at:Date.now(),pending:0});
+      const mine=nBlocks(state&&state.date===date&&state.equip===equip?state.blocks:(LS.get(APP+":day:"+date+"|"+equip,{}).blocks));
+      if(!mine) return (C[k]={at:Date.now(),pending:0});   // この号機はこの日に注湯していない
+      const yj=await getJ(yUrl(),{action:"load",token:yTok(),date,equip:"溶解"}); const rows=[]; (yj.items||[]).forEach(it=>{ if(it.type==="row") rows[+it.ref]=it.raw||{}; });
+      let exp=0, lastNo=0, lastTap=""; rows.forEach((r,i)=>{ if(r&&(r.tap||started(r))){ exp++; lastNo=i+1; lastTap=r.tap||""; } });
+      let others=0; const c=Sync.getCfg();
+      for(const e of EQUIPS){ if(e===equip) continue; let n=nBlocks(LS.get(APP+":day:"+date+"|"+e,{}).blocks);
+        if(c&&c.syncUrl){ try{ const j=await getJ(c.syncUrl,{action:"load",token:c.token,date,equip:e}); n=Math.max(n,(j.items||[]).filter(it=>it.type==="block"&&((it.raw||{}).rows||[]).some(x=>x&&x.time)).length); }catch(x){} }
+        others+=n; }
+      const poured=mine+others; return (C[k]={at:Date.now(),exp,poured,pending:Math.max(0,exp-poured),lastNo,lastTap}); }
+    catch(e){ return (C[k]={at:Date.now(),pending:0,err:String(e.message||e)}); } }   // 溶解日報が読めないときは止めない
+  function override(){ const k=state.date+"|"+state.equip; const pin=prompt("溶解日報のチャージ数がまちがっているときだけ使います。\n管理者パスワードを入れてください");
+    if(pin==null) return; if(pin!==String(CFG.adminPin||"0726")){ toast("パスワードがちがいます"); return; } OK[k]=true; toast("管理者の確認で、当日の日報へ移れるようにしました"); renderNight(); }
+  return {check,cached:(d,e)=>C[d+"|"+e],isOk:(d,e)=>!!OK[d+"|"+e],override};
+})();
+// 先の日付へ移るとき：いまの日報（前の日）が溶解の最終チャージを注湯し終わっていなければ止める
+async function canLeave(to){ if(VIEW||!state||!to||to<=state.date) return true; if(Gate.isOk(state.date,state.equip)) return true;
+  if(state.date!==prevDay(todayStr())) return true;
+  const g=await Gate.check(state.date,state.equip); if(!(g.pending>0)) return true;
+  toast(`溶解の最終チャージ No.${g.lastNo} の注湯がまだです（溶解 ${g.exp}／注湯 ${g.poured} チャージ）。終わるまで移れません`); renderNight(); return false; }
+// アプリを開いたとき：前の日の溶解の最終チャージがまだ注湯されていなければ、前の日の日報を開く
+async function gateOnOpen(){ if(VIEW) return; const t=todayStr(), p=prevDay(t); if(state.date!==t||nBlocksNow()) return;
+  const g=await Gate.check(p,state.equip); if(state.date!==t||nBlocksNow()||!(g.pending>0)) return;
+  load(p,state.equip); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); renderNight(); toast("前の日の溶解の最終チャージがまだ注湯されていないので、前の日の日報を開きました"); }
+function nBlocksNow(){ return state.blocks.some(b=>b.rows.some(x=>x.time)); }
+
 // ---- 夜勤の日報を朝まで続けているときの帯 ----
 function renderNight(){ const bar=$("nightBar"); if(!bar) return; const t=todayStr(), h=new Date().getHours();
+  // v15：溶解の最終チャージを注湯し終わるまで、当日の日報へは移れない
+  if(!VIEW&&state.date===prevDay(t)){ const g=Gate.cached(state.date,state.equip); if(!g||Date.now()-g.at>30000) Gate.check(state.date,state.equip).then(()=>renderNight());
+    if(g&&g.pending>0&&!Gate.isOk(state.date,state.equip)){ const md=d=>{ const [,m,dd]=d.split("-"); return `${+m}/${+dd}`; }; bar.hidden=false;
+      bar.innerHTML=`🔒 溶解の最終チャージ（No.${g.lastNo}${g.lastTap?` 出湯 ${esc(g.lastTap)}`:"・溶解中"}）の注湯が終わっていません。溶解 ${g.exp} チャージ ／ 注湯 ${g.poured} チャージ（${md(state.date)}）。注湯し終わるまで、当日（${md(t)}）の日報には移れません <span class="id" style="color:#d1c4e9">Selesaikan penuangan charge terakhir dulu</span>`+
+        `<button id="btnToToday" disabled style="opacity:.5">当日（${md(t)}）の日報へ（あと ${g.pending} チャージ）</button><button id="gateOverride" style="background:transparent;color:#d1c4e9;border:1px solid #9575cd;font-size:12px;min-height:34px">溶解日報がまちがっているとき（管理者）</button>`; return; } }
   if(state.date!==prevDay(t)||h<DAY_START||h>=12){ bar.hidden=true; return; } const li=lastBlockInfo(state); if(!li||!li.night){ bar.hidden=true; return; }
   const md=d=>{ const [,m,dd]=d.split("-"); return `${+m}/${+dd}`; };
   { const B=state.blocks, tm=x=>{ const m=/^(\d{1,2}):(\d{2})/.exec((x&&x.time)||""); return m?+m[1]*60+(+m[2]):null; };
     let lastNight=-1, lastUsed=-1; B.forEach((b,i)=>{ const ts=b.rows.map(tm).filter(v=>v!=null); if(ts.length){ lastUsed=i; if(ts.some(v=>v<DAY_START*60)) lastNight=i; } });
     if(lastUsed>lastNight&&lastNight>=0){ bar.hidden=false; bar.innerHTML=`⚠ ${lastUsed+1}チャージ目は朝からの新しいチャージです。日勤のチャージは当日（${md(t)}）の日報に入れてください <span class="id" style="color:#d1c4e9">Masukkan ke laporan hari ini</span><button id="btnToToday">当日（${md(t)}）の日報へ</button>`; return; } }
   bar.hidden=false; bar.innerHTML=`🌙 夜勤（${md(state.date)}）の日報です　${li.no}チャージ目 注湯中 <span class="id" style="color:#d1c4e9">Laporan shift malam</span><button id="btnToToday">注湯が終わったら → 当日（${md(t)}）の日報へ</button>`; }
-document.addEventListener("click",async e=>{ if(e.target.closest&&e.target.closest("#btnToToday")){ try{ await Sync.flush(); }catch(x){} load(todayStr(),state.equip); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); renderNight(); window.scrollTo({top:0,behavior:"smooth"}); } });
+document.addEventListener("click",async e=>{ if(e.target.closest&&e.target.closest("#gateOverride")){ Gate.override(); return; }
+  if(e.target.closest&&e.target.closest("#btnToToday")){ try{ await Sync.flush(); }catch(x){} if(!(await canLeave(todayStr()))) return; load(todayStr(),state.equip); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); renderNight(); window.scrollTo({top:0,behavior:"smooth"}); } });
 setInterval(renderNight,30000);
 // ---- init ----
 { const last=LS.get(APP+":last",null); const t=todayStr(); const qp=new URLSearchParams(location.search), qe=qp.get("equip"), qd=qp.get("date");
@@ -1091,7 +1131,7 @@ setInterval(renderNight,30000);
 sel=firstOpen();
 renderAll();
 if(VIEW){ $("viewBadge").hidden=false; document.title="注湯日報（閲覧用）"; document.querySelectorAll("#recordCheck,#c_mangan,#c_ryuka").forEach(el=>el.readOnly=true); }
-Sync.status(); Sync.flush().then(()=>Sync.pull()); Link.load(true); Melt.load(); Crew.pull();
+Sync.status(); Sync.flush().then(()=>Sync.pull()); Link.load(true); Melt.load(); Crew.pull(); gateOnOpen();
 const EXP={csv:()=>dataRows(), load:(d,q)=>load(d,q), empty:()=>!state.blocks.some(blockHas)&&!samplingRows()[1]&&!liveEvents().length, name:()=>"注湯日報_"+state.equip+"_"+state.date.replace(/-/g,"")+".xlsx"};
 // ---- 自動Excel出力（URL末尾に ?export=開始日..終了日 を付けて開くと、その期間の日報Excelを作って画面に埋め込む）----
 (async function(){
