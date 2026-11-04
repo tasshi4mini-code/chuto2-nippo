@@ -1114,7 +1114,11 @@ function renderNight(){ const bar=$("nightBar"); if(!bar) return; const t=todayS
   const md=d=>{ const [,m,dd]=d.split("-"); return `${+m}/${+dd}`; };
   { const B=state.blocks, tm=x=>{ const m=/^(\d{1,2}):(\d{2})/.exec((x&&x.time)||""); return m?+m[1]*60+(+m[2]):null; };
     let lastNight=-1, lastUsed=-1; B.forEach((b,i)=>{ const ts=b.rows.map(tm).filter(v=>v!=null); if(ts.length){ lastUsed=i; if(ts.some(v=>v<DAY_START*60)) lastNight=i; } });
-    if(lastUsed>lastNight&&lastNight>=0){ bar.hidden=false; bar.innerHTML=`⚠ ${lastUsed+1}チャージ目は朝からの新しいチャージです。日勤のチャージは当日（${md(t)}）の日報に入れてください <span class="id" style="color:#d1c4e9">Masukkan ke laporan hari ini</span><button id="btnToToday">当日（${md(t)}）の日報へ</button>`; return; } }
+    // v16：溶解日報（同じ日）のチャージ数まで注湯しているだけなら、朝のチャージも前の日の分なので出さない
+    const g0=Gate.cached(state.date,state.equip), inMelt=g0&&g0.exp!=null&&g0.poured<=g0.exp;
+    if(lastUsed>lastNight&&lastNight>=0&&!inMelt){ bar.hidden=false; bar.innerHTML=`⚠ ${lastUsed+1}チャージ目は朝からの新しいチャージです。日勤のチャージは当日（${md(t)}）の日報に入れてください <span class="id" style="color:#d1c4e9">Masukkan ke laporan hari ini</span><button id="btnToToday">当日（${md(t)}）の日報へ</button>`; return; } }
+  { const g1=Gate.cached(state.date,state.equip); if(g1&&g1.exp&&g1.poured>=g1.exp){ bar.hidden=false;
+      bar.innerHTML=`✅ 溶解 ${g1.exp} チャージ ／ 注湯 ${g1.poured} チャージ。${md(state.date)} の注湯はすべて終わりました <span class="id" style="color:#d1c4e9">Selesai</span><button id="btnToToday">当日（${md(t)}）の日報へ</button>`; return; } }
   bar.hidden=false; bar.innerHTML=`🌙 夜勤（${md(state.date)}）の日報です　${li.no}チャージ目 注湯中 <span class="id" style="color:#d1c4e9">Laporan shift malam</span><button id="btnToToday">注湯が終わったら → 当日（${md(t)}）の日報へ</button>`; }
 document.addEventListener("click",async e=>{ if(e.target.closest&&e.target.closest("#gateOverride")){ Gate.override(); return; }
   if(e.target.closest&&e.target.closest("#btnToToday")){ try{ await Sync.flush(); }catch(x){} if(!(await canLeave(todayStr()))) return; load(todayStr(),state.equip); sel=firstOpen(); renderAll(); Sync.pull(); Link.load(true); renderNight(); window.scrollTo({top:0,behavior:"smooth"}); } });
