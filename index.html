@@ -248,6 +248,16 @@ label.sup input::placeholder{color:#e57373;font-weight:normal}
 .nightbar[hidden]{display:none!important}
 .nightbar button{min-height:42px;font-weight:bold;background:#fff;color:#311b92;border:0;border-radius:8px;padding:0 12px;margin-left:auto}
 .tcell .tclr{min-width:40px;padding:4px 6px;color:#b00020;font-weight:bold}
+/* v17：注湯の止めの帯（紫）は溶解の帯の下に1行で。溶解の帯が細く縦長にならないように */
+.sticktop{flex-wrap:wrap}
+.sticktop .meltbar{flex:1 1 360px}
+.sticktop .nightbar{flex:1 1 100%;order:3;padding:5px 10px;font-size:14px;gap:6px 10px}
+.nightbar .ntx{flex:1 1 300px;min-width:0}
+.nightbar .id{font-size:12px;font-weight:normal}
+.nightbar button{min-height:36px;font-size:14px}
+.nightbar #gateOverride{margin-left:0}
+.sticktop.stuck .nightbar .id,.sticktop.stuck #gateOverride{display:none}
+.sticktop.stuck .meltbar small{display:none}
 body.view .tclr{display:none}
 </style>
 </head>
@@ -1108,7 +1118,7 @@ function renderNight(){ const bar=$("nightBar"); if(!bar) return; const t=todayS
   // v15：溶解の最終チャージを注湯し終わるまで、当日の日報へは移れない
   if(!VIEW&&state.date===prevDay(t)){ const g=Gate.cached(state.date,state.equip); if(!g||Date.now()-g.at>30000) Gate.check(state.date,state.equip).then(()=>renderNight());
     if(g&&g.pending>0&&!Gate.isOk(state.date,state.equip)){ const md=d=>{ const [,m,dd]=d.split("-"); return `${+m}/${+dd}`; }; bar.hidden=false;
-      bar.innerHTML=`🔒 溶解の最終チャージ（No.${g.lastNo}${g.lastTap?` 出湯 ${esc(g.lastTap)}`:"・溶解中"}）の注湯が終わっていません。溶解 ${g.exp} チャージ ／ 注湯 ${g.poured} チャージ（${md(state.date)}）。注湯し終わるまで、当日（${md(t)}）の日報には移れません <span class="id" style="color:#d1c4e9">Selesaikan penuangan charge terakhir dulu</span>`+
+      bar.innerHTML=`<span class="ntx">🔒 溶解の最終 No.${g.lastNo}（${g.lastTap?`出湯 ${esc(g.lastTap)}`:"溶解中"}）の注湯がまだです　溶解 ${g.exp}／注湯 ${g.poured} ch <span class="id" style="color:#d1c4e9">Selesaikan charge terakhir dulu</span></span>`+
         `<button id="btnToToday" disabled style="opacity:.5">当日（${md(t)}）の日報へ（あと ${g.pending} チャージ）</button><button id="gateOverride" style="background:transparent;color:#d1c4e9;border:1px solid #9575cd;font-size:12px;min-height:34px">溶解日報がまちがっているとき（管理者）</button>`; return; } }
   if(state.date!==prevDay(t)||h<DAY_START||h>=12){ bar.hidden=true; return; } const li=lastBlockInfo(state); if(!li||!li.night){ bar.hidden=true; return; }
   const md=d=>{ const [,m,dd]=d.split("-"); return `${+m}/${+dd}`; };
