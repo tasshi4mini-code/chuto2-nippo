@@ -1024,7 +1024,9 @@ const Melt=(function(){
       rows.forEach((r,i)=>{ if(r&&r.tap){ pour={no:i+1,mat:lab(r.mat||r.plan),t:r.tap}; lastTap=Math.max(lastTap,i); } });
       const D=yd(), [yy,mo,dd]=D.split("-").map(Number), now=Date.now();
       const stAt=v=>{ const m=/^(\d{1,2}):(\d{2})/.exec(v||""); if(!m) return null; const h=+m[1]; return new Date(yy,mo-1,dd+(h<8?1:0),h,+m[2]).getTime(); };
-      for(let i=lastTap+1;i<rows.length;i++){ const r=rows[i]; if(!r||r.tap) continue; const t=stAt(r.st); if(t!=null&&t<=now+60000){ melt={no:i+1,mat:lab(r.mat||r.plan),t:r.st,plan:!r.mat&&!!r.plan}; break; } }
+      // 自動で入った開始時刻（前の出湯＋5分）だけのチャージは、開始から2時間までを溶解中とみなす（その日の最後の出湯のあとに残る自動の開始時刻で「溶解中」にしない）
+      const busyR=r=>["sen","kou","dar","drM","kat","sil","addC","addSi","addSc","ce","c","si","ten","temp"].some(k=>(r[k]||"")!=="");
+      for(let i=lastTap+1;i<rows.length;i++){ const r=rows[i]; if(!r||r.tap) continue; const t=stAt(r.st); if(t!=null&&t<=now+60000&&(!r.stAuto||busyR(r)||now-t<2*3600e3)){ melt={no:i+1,mat:lab(r.mat||r.plan),t:r.st,plan:!r.mat&&!!r.plan}; break; } }
       // 開始時刻が入っていないとき：最後の出湯の次のチャージに、材質以外の入力（原材料など）が始まっていれば溶解中とみなす
       if(!melt){ const r=rows[lastTap+1]; if(r&&!r.tap&&!r.st&&["sen","kou","dar","drM","kat","sil","addC","addSi","addSc","ce","c","si","ten","temp","worker"].some(k=>(r[k]||"")!=="")) melt={no:lastTap+2,mat:lab(r.mat||r.plan),t:"",plan:!r.mat&&!!r.plan}; }
       const last=melt?melt.no-1:lastTap;
@@ -1094,8 +1096,9 @@ const Gate=(function(){
   async function getJ(base,params){ const u=base+(base.includes("?")?"&":"?")+new URLSearchParams(params); const j=await (await fetch(u,{redirect:"follow"})).json(); if(!j.ok) throw new Error(j.error||"error"); return j; }
   // v21：材質だけ先に入れたチャージは数えない。出湯済み・開始時刻が今までに来ている・原材料などの入力が始まっているチャージを数える
   let gDate="";
-  const started=r=>{ if(r.tap) return true; if(["sen","kou","dar","drM","kat","sil","temp","worker"].some(k=>(r[k]||"")!=="")) return true;
-    const m=/^(\d{1,2}):(\d{2})/.exec(r.st||""); if(!m||!gDate) return false; const [y,mo,d]=gDate.split("-").map(Number), h=+m[1];
+  //   v22：自動で入った開始時刻（前の出湯＋5分）だけ・作業者だけのチャージは数えない（その日の最後の出湯のあとに自動で開始時刻が入るため）
+  const started=r=>{ if(r.tap) return true; if(["sen","kou","dar","drM","kat","sil","addC","addSi","addSc","ce","c","si","ten","temp"].some(k=>(r[k]||"")!=="")) return true;
+    const m=/^(\d{1,2}):(\d{2})/.exec(r.st||""); if(!m||!gDate||r.stAuto) return false; const [y,mo,d]=gDate.split("-").map(Number), h=+m[1];
     return new Date(y,mo-1,d+(h<8?1:0),h,+m[2]).getTime()<=Date.now()+60000; };
   const nBlocks=blocks=>(blocks||[]).filter(b=>b&&(b.rows||[]).some(x=>x&&x.time)).length;
   async function check(date,equip){ const k=date+"|"+equip;
